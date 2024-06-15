@@ -1,80 +1,52 @@
+import time
 from environment import Environment
 from agent import DQN
+from baselines import LocalAgent, EdgeAgent, CloudAgent, RandomAgent, GreedyAgent
 
-def save(dirname, filename, data):
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
-    with open(os.path.join(dirname, filename), 'w') as f:
-        f.write(data)
-
-def train():
+def main(name="greedy", seed=0):
     env = Environment()
-    agent = DQN(env)
-    episodes = 20000
-    dvr_list = []
-    reward_list = []
-    t = 0
-    for i in range(episodes):
-        # print(i)
-        state = env.reset(seed=i)
-        ep_reward = 0
-        done = False
-        while not done:
-            avail_action = env.get_avail_actions()
-            action = agent.choose_action(state, avail_action, t)
-            next_state, reward, done = env.step(action)
 
-            agent.store_transition(state, action, reward, next_state, avail_action)            
-
-            ep_reward += reward
-
-            if agent.buffer_idx >= agent.buffer_size:
-                agent.learn()
-                if done:
-                    print("episode: {} , the episode reward is {}".format(i, round(ep_reward, 3)))
-            if done:
-                break
-            state = next_state
-            t = t + 1
-        
-        dvr_rate = env.get_metric()
-        dvr_list.append(dvr_rate)
-        reward_list.append(ep_reward)
-
-        if i % 5000 == 0:
-            agent.save_models("./saved/off/dqn/{}/".format(i))
-    save("./saved/off/dqn/", "dvr.txt", dvr_list)
-    save("./saved/off/dqn/", "ep_reward.txt", reward_list)
-
-
-def evaluate(path=""):
-    env = Environment()
+    if name == "local":
+        agent = LocalAgent()
+    elif name == "edge":
+        agent = EdgeAgent()
+    elif name == "cloud":
+        agent = CloudAgent()
+    elif name == "random":
+        agent = RandomAgent()
+    elif name == "greedy":
+        agent = GreedyAgent()
+    elif name == "dqn":
+        agent = DQN(env)
+        path = ""
+        # path = "/home/cjp/Desktop/MARL/DRLOFF/saved/off/dqn/1718440579.045611/0"
+        if path != "":
+            agent.load_models(path)
     
-    agent = DQN(env)
-
-    if path != "":
-        agent.load_models(path)
-
-    state = env.reset()
+    state = env.reset(seed)
     ep_reward = 0
-    t = 0
-    while True:
-
+    while not env.done:
         avail_action = env.get_avail_actions()
-        action = agent.choose_action(state, avail_action, t, True)
-        next_state, reward, done = env.step(action)     
+        action = agent.choose_action(state, avail_action)
 
-        ep_reward += reward
+        state, reward, done = env.step(action)
 
-        if done:
-            print("the episode reward is {}".format(round(ep_reward, 3)))
-            break
-        state = next_state
+        ep_reward = ep_reward + reward
+    # env.log()
+    # print(env.get_metric())
+    # env.plot_task()
+    return env.get_metric(), ep_reward
 
-        t = t + 1
-    pass
-        
-
-if __name__ == '__main__':
-    train()
-    # evaluate()
+if __name__ == "__main__":
+    start_time = time.time()
+    # start_time = 0
+    # for name in ["local", "edge", "cloud", "random", "greedy", "dqn"]:
+    for name in ["dqn"]:
+        episodes = 200
+        dvr_rate_mean = 0
+        ep_reward_mean = 0
+        for i in range(episodes):
+            dvr_rate, ep_reward = main(name, int(start_time)+i)
+            dvr_rate_mean += dvr_rate / episodes
+            ep_reward_mean += ep_reward / episodes
+        print("agent: {}\t, dvr_rate_mean: {}\t\t, ep_reward_mean: {}".format(name, dvr_rate_mean, ep_reward_mean))

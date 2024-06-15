@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
 import random
-
+import time
 
 class Constant():
     c_max = 5e10 # CPU频率最大值
@@ -68,11 +68,8 @@ class Environment():
 
         # 初始化任务的属性
         tasks = list(G.nodes)
-        # TODO： 任务数据大小和边缘节点存储容量不匹配，导致资源一直有剩余，avail_actions全为1
         b_v = np.random.uniform(8e5, 1.6e6, V)  # 任务数据大小
         d_v = np.random.uniform(2e8, 2e9, V)  # 任务所需的CPU周期数
-        # TODO: 容忍延迟设计不合理
-        # t_v = np.ramdom.normal()
 
         # 重新排序任务
         sorted_index = self.sorted_nodes  # 获取按任务编号排序后的索引    
@@ -90,13 +87,15 @@ class Environment():
 
 
     def init_cluster(self):
+        # TODO: 数据设计不合理
 
         # 本地
         self.l_vm = np.random.uniform(1e8, 2e8)  # 本地处理任务的CPU频率
         self.l_cap = np.random.uniform(1e8, 2e8) # 本地的存储容量
         # 边缘
         self.e_vm = np.random.uniform(1e9, 2e9, self.M)  # 基站处理任务的CPU频率
-        self.r_vm = np.random.uniform(2e6, 4e6, self.M)  # 基站与任务之间的传输速率
+        # self.r_vm = np.random.uniform(2e6, 4e6, self.M)  # 基站与任务之间的传输速率
+        self.r_vm = np.random.uniform(1e6, 4e6, self.M)  # 基站与任务之间的传输速率
         self.e_cap = np.random.uniform(1e9, 2e9, self.M) # 基站的存储容量
         # 云
         self.r_vc = np.random.uniform(2.4e6, 4.8e6)  # 云与任务之间的传输速率
@@ -116,11 +115,14 @@ class Environment():
     def step(self, action):
         """
         action: [0, 1, 2, ... M, M+1]
+        edge: 0, 1, 2, ..., M-1
+        local: M
+        cloud: M+1
         """
         task_idx = self.current_idx
 
         # 本地
-        if action == 0:
+        if action == self.M:
             if task_idx == 0:
                 self.T_com[task_idx] = self.sorted_d_v[task_idx] / self.l_vm
             else:
@@ -158,7 +160,7 @@ class Environment():
             self.off_dev[task_idx] = self.M + 1
         # 边缘
         else:
-            edge_idx = action - 1
+            edge_idx = action
             if task_idx == 0:
                 self.T_com[task_idx] = self.sorted_d_v[task_idx] / self.e_vm[edge_idx] + self.sorted_b_v[task_idx] / self.r_vm[edge_idx]
             else:
@@ -201,30 +203,20 @@ class Environment():
 
 
     def get_state(self):
-        """
-        
-        """
         if self.current_idx == len(self.G.nodes):
             task_idx = np.zeros(len(self.G.nodes))
         else:
             task_idx = np.zeros(len(self.G.nodes))
             task_idx[self.current_idx] = 1.0
-        task_info = np.stack([task_idx, normalize(self.sorted_b_v), normalize(self.sorted_d_v), normalize(self.sorted_t_v)], axis=1)
+        task_info = np.stack([normalize(self.sorted_b_v), normalize(self.sorted_d_v), normalize(self.sorted_t_v)], axis=1)
 
         dev_c = np.append(np.append(self.l_vm, self.e_vm), Constant.c_max)
         dev_r = np.append(np.append(Constant.r_max, self.r_vm), self.r_vc)
         dev_cap = np.append(np.append(self.l_cap, self.e_cap), Constant.e_max)
         dev_info = np.stack([normalize(dev_c), normalize(dev_r), normalize(dev_cap)], axis=1)
         
-        # state = (task_info, dev_info, self.adjacency_matrix)
-        # TODO： 由于当前的智能体采用MLP，所以简单使用flatten_state，后续考虑GNN，则直接使用上面的state
-        state = self.flatten_state((task_info, dev_info))
+        state = (task_idx, task_info, dev_info, self.adjacency_matrix)
         return state
-
-    def flatten_state(self, state):
-        task_info, dev_info = state
-        flatten_state = np.append(task_info.flatten(), dev_info.flatten())
-        return flatten_state
 
     def get_reward(self):
         # TODO： reward设计不合理，没法用于强化学习训练
@@ -235,11 +227,40 @@ class Environment():
         return r1
 
     def get_state_size(self):
-        return len(self.G.nodes) * 4 + (self.M + 2) * 3
+        """
+        task_idx + task_info + dev_info + graph
+        """
+        return len(self.G.nodes) + len(self.G.nodes) * 3 + (self.M + 2) * 3 + len(self.G.nodes) * len(self.G.nodes)
 
     def get_action_size(self):
+        """
+        1 + M + 1
+        """
         return self.M + 2
 
+    def encode_state(self, state):
+        task_idx, task_info, dev_info, graph = state
+        return np.hstack((task_idx.flatten(), task_info.flatten(), dev_info.flatten(), graph.flatten()))
+
+    def encode_batch_state(self, batch_state):
+        task_idx, task_info, dev_info, graph = batch_state
+        batch_size = task_idx.shape[0]
+        return np.hstack((task_idx.reshape(batch_size, -1), task_info.reshape((batch_size, -1)), dev_info.reshape((batch_size, -1)), graph.reshape((batch_size, -1))))
+
+    def decode_batch_state(self, batch_state):
+        num_nodes = len(self.G.nodes)
+        M = self.M
+        
+        task_idx_dim = num_nodes
+        task_info_dim = num_nodes * 3
+        dev_info_dim = (M + 2) * 3
+        graph_dim = num_nodes * num_nodes
+
+        task_idx = np.array([item.reshape(num_nodes, 1) for item in batch_state[:, :task_idx_dim]])
+        task_info = np.array([item.reshape(num_nodes, 3) for item in batch_state[:, task_idx_dim:task_idx_dim+task_info_dim]])
+        dev_info = np.array([item.reshape((M+2), 3) for item in batch_state[:, task_idx_dim+task_info_dim:task_idx_dim+task_info_dim+dev_info_dim]])
+        graph = np.array([item.reshape(num_nodes, num_nodes) for item in batch_state[:, -graph_dim:]])
+        return (task_idx, task_info, dev_info, graph)
 
     def get_avail_actions(self):
         avail_actions = np.ones(self.M + 2)
@@ -276,7 +297,6 @@ class Environment():
         plt.show()
 
     def get_metric(self):
-        # TODO： reward设计不合理，没法用于强化学习训练
         # DVR
         task_idx = self.current_idx
         dvr_count = 0
@@ -285,40 +305,3 @@ class Environment():
                 dvr_count = dvr_count + 1
         return dvr_count / len(self.G.nodes)
 
-
-# 以下是测试代码
-
-def main():
-    env = Environment()
-    state = env.reset()
-    # env.log()
-    ep_reward = 0
-    while not env.done:
-        # random
-        avail_action = env.get_avail_actions()
-        action = np.random.choice(env.get_action_size(), p=avail_action/sum(avail_action))
-        
-        # local
-        # action = 0
-        
-        state, reward, done = env.step(action)
-        # print("state:", state)
-        # print("reward:", reward)
-
-        ep_reward = ep_reward + reward
-    env.log()
-    # print(env.get_metric())
-    # env.plot_task()
-    return env.get_metric(), ep_reward
-
-if __name__ == "__main__":
-
-    episodes = 2
-    dvr_rate_mean = 0
-    ep_reward_mean = 0
-    for i in range(episodes):
-        dvr_rate, ep_reward = main()
-        dvr_rate_mean += dvr_rate / episodes
-        ep_reward_mean += ep_reward / episodes
-    print(dvr_rate_mean)
-    print(ep_reward_mean)

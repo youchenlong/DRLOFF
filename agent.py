@@ -3,21 +3,56 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import os
-
-import gym
 import time
-import types
+
+from environment import Environment
+from buffer import ReplayBuffer
+from gnn import GCNLayer
 
 
-class MLP(nn.Module):
+class MLPPolicy(nn.Module):
     def __init__(self, n_state, n_action):
-        super(MLP, self).__init__()
+        super(MLPPolicy, self).__init__()
+        self.name = "mlp"
+
         self.hid_size = 64
         self.fc1 = nn.Linear(n_state, self.hid_size)
         self.fc2 = nn.Linear(self.hid_size, n_action)
 
     def forward(self, x):
+        """
+        x: [batch_size, n_state]
+        n_state = num_nodes * 4 + (M+2)*3 + num_nodes * num_nodes
+        """
         x = F.relu(self.fc1(x))
+        action_prob = self.fc2(x)
+        return action_prob
+
+
+class GCNPolicy(nn.Module):
+    def __init__(self, n_feature, n_action, num_nodes, M):
+        super(GCNPolicy, self).__init__()
+        self.name = "gcn"
+
+        self.gcn_out_dim = 4 # hid_size与输入特征的维度相差不能太大
+        self.hid_size = 64
+        self.gcn = GCNLayer(n_feature, self.gcn_out_dim)
+        self.fc1 = nn.Linear(num_nodes + num_nodes * self.gcn_out_dim + (M + 2) * 3, self.hid_size)
+        self.fc2 = nn.Linear(self.hid_size, n_action)
+
+    def forward(self, idx, x, y, adj):
+        """
+        idx: [batch_size, num_nodes, 1]
+        x: [batch_size, num_nodes, 3]
+        y: [batch_size, M+2, 3]
+        adj: [batch_size, num_nodes, num_nodes]
+        """
+        batch_size = x.shape[0]
+        x = self.gcn(x, adj) # [batch_size, num_nodes, out_dim]
+        x = x.reshape(batch_size, -1) # [batch_size, num_nodes * out_dim]
+        idx = idx.reshape(batch_size, -1) # [batch_size, num_nodes * 1]
+        y = y.reshape(batch_size, -1) # [batch_size, (M+2) * 3]
+        x = F.relu(self.fc1(torch.cat([idx, x, y], dim=-1)))
         action_prob = self.fc2(x)
         return action_prob
 
@@ -37,7 +72,7 @@ class LinearSchedule():
         return min(self.finish, self.start + self.delta * T)
 
 class DQN():
-    def __init__(self, env):
+    def __init__(self, env, name="mlp"):
         super(DQN, self).__init__()
         self.env = env
         self.n_state = self.env.get_state_size()
@@ -55,23 +90,42 @@ class DQN():
         self.target_update_interval = 200 # target update interval
         self.grad_norm_clip = 10 # avoid gradient explode
 
-        self.net = MLP(self.n_state, self.n_action)
-        self.target_net = MLP(self.n_state, self.n_action)
+        if name == "mlp":
+            self.net = MLPPolicy(self.n_state, self.n_action)
+            self.target_net = MLPPolicy(self.n_state, self.n_action)
+        elif name == "gcn":
+            self.net = GCNPolicy(3, self.n_action, len(self.env.G.nodes), self.env.M)
+            self.target_net = GCNPolicy(3, self.n_action, len(self.env.G.nodes), self.env.M)
+        else:
+            raise Exception("error!")
 
         self.learn_step_counter = 0
-        self.buffer_idx = 0
-        # TODO: structure buffer is need to use GNN
-        self.buffer = np.zeros((self.buffer_size, self.n_state * 2 + self.n_action + 2))
+        self.buffer = ReplayBuffer(self.buffer_size, self.batch_size, self.env)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
 
-    def choose_action(self, state, avail_action, t, evaluate=False):
+
+    def choose_action(self, state, avail_action, t=0, evaluate=False):
         if evaluate:
             epsilon = 1.0
         else:
             epsilon = self.epsilon_schedule.eval(t)
-        state = torch.unsqueeze(torch.FloatTensor(state), 0) # get a 1D array
-        action_value = self.net.forward(state)
+        if self.net.name == "mlp":
+            state = self.env.encode_state(state)
+            state = torch.unsqueeze(torch.FloatTensor(state), 0)
+            action_value = self.net.forward(state)
+        elif self.net.name == "gcn":
+            task_idx, task_info, dev_info, graph = state
+            task_idx = torch.unsqueeze(torch.FloatTensor(task_idx), 0)
+            task_info = torch.unsqueeze(torch.FloatTensor(task_info), 0)
+            dev_info = torch.unsqueeze(torch.FloatTensor(dev_info), 0)
+            graph = torch.unsqueeze(torch.FloatTensor(graph), 0)
+            action_value = self.net.forward(task_idx, task_info, dev_info, graph)
+        else:
+            raise Exception("error!")
+            
         action_value = action_value.squeeze()
+        # print(action_value.shape)
+        # print(avail_action.shape)
         action_value[avail_action == 0] = 0
         if np.random.randn() <= epsilon:# greedy policy
             action = torch.max(action_value, dim=0)[1].data.numpy()
@@ -81,35 +135,39 @@ class DQN():
         return action
 
 
-    def store_transition(self, state, action, reward, next_state, avail_action):
-        transition = np.hstack((state, [action, reward], next_state, avail_action))
-        index = self.buffer_idx % self.buffer_size
-        self.buffer[index, :] = transition
-        self.buffer_idx += 1
-
-
     def learn(self):
 
-        #update the parameters
+        #update target parameters
         if self.learn_step_counter % self.target_update_interval ==0:
             self.target_net.load_state_dict(self.net.state_dict())
         self.learn_step_counter+=1
 
-        #sample batch from buffer
-        sample_index = np.random.choice(self.buffer_size, self.batch_size)
-        batch_memory = self.buffer[sample_index, :]
-        batch_state = torch.FloatTensor(batch_memory[:, :self.n_state])
-        batch_action = torch.LongTensor(batch_memory[:, self.n_state:self.n_state+1].astype(int))
-        batch_reward = torch.FloatTensor(batch_memory[:, self.n_state+1:self.n_state+2])
-        batch_next_state = torch.FloatTensor(batch_memory[:, self.n_state+2:self.n_state*2+2])
-        batch_avail_action = torch.FloatTensor(batch_memory[:, -self.n_action:])
+        # sample from replay buffer
+        batch_state, batch_action, batch_reward, batch_next_state, batch_avail_action = self.buffer.sample()
+        if self.net.name == "mlp":
+            batch_state = torch.FloatTensor(self.env.encode_batch_state(batch_state)) 
+            batch_next_state = torch.FloatTensor(self.env.encode_batch_state(batch_next_state))
+            batch_action = torch.LongTensor(batch_action.astype(int))
+            batch_reward = torch.FloatTensor(batch_reward)
+            batch_avail_action = torch.FloatTensor(batch_avail_action)
+            q = torch.gather(self.net(batch_state), dim=1, index=batch_action)
+            q_next = self.target_net(batch_next_state).detach()
+        elif self.net.name == "gcn":
+            idx, x, y, adj = batch_state
+            target_idx, target_x, target_y, target_adj = batch_next_state
+            batch_action = torch.LongTensor(batch_action.astype(int))
+            batch_reward = torch.FloatTensor(batch_reward)
+            batch_avail_action = torch.FloatTensor(batch_avail_action)
+            q = torch.gather(self.net(torch.FloatTensor(idx), torch.FloatTensor(x), torch.FloatTensor(y), torch.FloatTensor(adj)), dim=1, index=batch_action)
+            q_next = self.target_net(torch.FloatTensor(target_idx), torch.FloatTensor(target_x), torch.FloatTensor(target_y), torch.FloatTensor(target_adj)).detach()
+        else:
+            raise Exception("error!")
 
-        q = self.net(batch_state).gather(1, batch_action)
-        q_next = self.target_net(batch_next_state).detach()
         q_next[batch_avail_action == 0] = 0
         q_target = batch_reward + self.gamma * q_next.max(1)[0].view(self.batch_size, 1)
         loss = F.mse_loss(q, q_target)
 
+        # update parameters
         self.optimizer.zero_grad()
         grad_norm = torch.nn.utils.clip_grad_norm_(self.net.parameters(), self.grad_norm_clip)
         if grad_norm > 0:
@@ -117,6 +175,11 @@ class DQN():
         loss.backward()
         self.optimizer.step()
 
+
+    def store_transition(self, state, action, reward, next_state, avail_action):
+        self.buffer.store(state, action, reward, next_state, avail_action)
+
+    
     def save_models(self, path):
         if not os.path.exists(path):
             os.makedirs(path)
@@ -128,98 +191,51 @@ class DQN():
         self.optimizer.load_state_dict(torch.load("{}/opt.th".format(path), map_location=lambda storage, loc: storage))
 
 
-
-# 以下是测试代码
-
-def reward_func(env, x, x_dot, theta, theta_dot):
-    r1 = (env.x_threshold - abs(x))/env.x_threshold - 0.5
-    r2 = (env.theta_threshold_radians - abs(theta)) / env.theta_threshold_radians - 0.5
-    reward = r1 + r2
-    return reward
+def save(dirname, filename, data):
+    if not os.path.exists(dirname):
+        os.makedirs(dirname)
+    with open(os.path.join(dirname, filename), 'w') as f:
+        f.write(str(data))
 
 def train():
-    
-    env = gym.make("CartPole-v1")
-    def get_state_size(self):
-        return self.observation_space.shape[0]
-    def get_action_size(self):
-        return self.action_space.n
-    env.get_state_size = types.MethodType(get_state_size, env)
-    env.get_action_size = types.MethodType(get_action_size, env)
-    
-    agent = DQN(env)
-    episodes = 10000
+    start_time = time.time()
+    # start_time = 0
+    env = Environment()
+    agent = DQN(env, name="mlp")
+    # episodes = 20000
+    episodes = 5000
+    dvr_list = []
     reward_list = []
     t = 0
     for i in range(episodes):
-        state = env.reset()
+        state = env.reset(seed=int(start_time)+i)
         ep_reward = 0
-        while True:
-
-            avail_action = np.ones(env.get_action_size())
+        done = False
+        while not done:
+            avail_action = env.get_avail_actions()
             action = agent.choose_action(state, avail_action, t)
-            next_state, reward, done, info = env.step(action)
-
-            x, x_dot, theta, theta_dot = next_state
-            reward = reward_func(env, x, x_dot, theta, theta_dot)
-
+            next_state, reward, done = env.step(action)
             agent.store_transition(state, action, reward, next_state, avail_action)            
 
             ep_reward += reward
 
-            if agent.buffer_idx >= agent.buffer_size:
+            if agent.buffer.can_sample():
                 agent.learn()
                 if done:
                     print("episode: {} , the episode reward is {}".format(i, round(ep_reward, 3)))
             if done:
                 break
             state = next_state
-
             t = t + 1
+        dvr_rate = env.get_metric()
+        dvr_list.append(dvr_rate)
         reward_list.append(ep_reward)
 
-        if i % 5000 == 0:
-            path = "./saved/cartpole-v1/dqn/{}/".format(i)
-            agent.save_models(path)
-    pass
+        if i % 1000 == 0:
+            agent.save_models("./saved/off/dqn/{}/{}".format(start_time, i))
+    save("./saved/off/dqn/{}".format(start_time), "dvr.txt", dvr_list)
+    save("./saved/off/dqn/{}".format(start_time), "ep_reward.txt", reward_list)
+        
 
-def evaluate(path=""):
-    env = gym.make("CartPole-v1")
-    def get_state_size(self):
-        return self.observation_space.shape[0]
-    def get_action_size(self):
-        return self.action_space.n
-    env.get_state_size = types.MethodType(get_state_size, env)
-    env.get_action_size = types.MethodType(get_action_size, env)
-    
-    agent = DQN(env)
-
-    if path != "":
-        agent.load_models(path)
-
-    state = env.reset()
-    ep_reward = 0
-    t = 0
-    while True:
-        time.sleep(0.1)
-        env.render()
-        avail_action = np.ones(env.get_action_size())
-        action = agent.choose_action(state, avail_action, t, True)
-        next_state, reward, done, info = env.step(action)
-
-        # x, x_dot, theta, theta_dot = next_state
-        # reward = reward_func(env, x, x_dot, theta, theta_dot)            
-
-        ep_reward += reward
-
-        if done:
-            print("the episode reward is {}".format(round(ep_reward, 3)))
-            break
-        state = next_state
-
-        t = t + 1
-    pass
-
-if __name__ == "__main__":
-    # train()
-    evaluate("./saved/cartpole-v1/dqn/")
+if __name__ == '__main__':
+    train()
