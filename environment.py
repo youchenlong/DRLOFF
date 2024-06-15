@@ -1,8 +1,10 @@
 import numpy as np
+import scipy.stats as stats
 import matplotlib.pyplot as plt
 import networkx as nx
 import random
 import time
+
 
 class Constant():
     c_max = 5e10 # CPU频率最大值
@@ -20,7 +22,8 @@ class Environment():
     def __init__(self):
         self.num_nodes = 100
         self.num_edges = 250
-        self.M = 3 # 基站数量
+        # self.M = 3 # 基站数量
+        self.M = 5 # 基站数量
         
         # 下面这行代码用于初始化成员变量，不可删除
         self.reset()
@@ -46,13 +49,25 @@ class Environment():
         return G, adjacency_matrix
 
     def generate_tolerance(self, V):
+        # 均匀分布
+        # t_v = np.zeros(V)
+        # for i in range(V):
+        #     if i == 0:
+        #         t_v[i] = np.random.uniform(1, 3)
+        #     else:
+        #         t_v[i] = t_v[i-1] +  np.random.uniform(1, 3)
+
+        # 正太分布（大于0）
+        lower, upper = 0, 4
+        mu, sigma = 2, 1
+        X = stats.truncnorm((lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
         t_v = np.zeros(V)
         for i in range(V):
             if i == 0:
-                t_v[i] = np.random.uniform(2, 4)
+                t_v[i] = X.rvs()
             else:
-                t_v[i] = t_v[i-1] +  np.random.uniform(2, 4)
-            pass
+                t_v[i] = t_v[i-1] + X.rvs()
+
         return t_v
 
     def generate_task(self, num_nodes, num_edges):
@@ -93,10 +108,19 @@ class Environment():
         self.l_vm = np.random.uniform(1e8, 2e8)  # 本地处理任务的CPU频率
         self.l_cap = np.random.uniform(1e8, 2e8) # 本地的存储容量
         # 边缘
-        self.e_vm = np.random.uniform(1e9, 2e9, self.M)  # 基站处理任务的CPU频率
+        # self.e_vm = np.random.uniform(1e9, 2e9, self.M)  # 基站处理任务的CPU频率
         # self.r_vm = np.random.uniform(2e6, 4e6, self.M)  # 基站与任务之间的传输速率
-        self.r_vm = np.random.uniform(1e6, 4e6, self.M)  # 基站与任务之间的传输速率
-        self.e_cap = np.random.uniform(1e9, 2e9, self.M) # 基站的存储容量
+        # self.e_cap = np.random.uniform(1e9, 2e9, self.M) # 基站的存储容量
+        self.e_vm = np.zeros(self.M) # 基站处理任务的CPU频率
+        self.r_vm = np.zeros(self.M) # 基站与任务之间的传输速率
+        self.e_cap = np.zeros(self.M) # 基站的存储容量
+        delta_e_vm = (2e9 - 1e9) / self.M
+        delta_r_vm = (4e6 - 2e6) / self.M
+        delta_e_cap = (2e9 - 1e9) / self.M
+        for i in range(self.M):
+            self.e_vm[i] = np.random.uniform(1e9 + i*delta_e_vm, 1e9 + (i+1)*delta_e_vm)
+            self.r_vm[i] = np.random.uniform(1e6 + i*delta_r_vm, 1e6 + (i+1)*delta_r_vm)
+            self.e_cap[i] = np.random.uniform(1e9 + i*delta_e_cap, 1e9 + (i+1)*delta_e_cap)
         # 云
         self.r_vc = np.random.uniform(2.4e6, 4.8e6)  # 云与任务之间的传输速率
         self.t_rt = 3  # 固定传输时延
@@ -305,3 +329,11 @@ class Environment():
                 dvr_count = dvr_count + 1
         return dvr_count / len(self.G.nodes)
 
+
+def main():
+    env = Environment()
+    env.reset()
+    env.log()
+
+if __name__ == "__main__":
+    main()

@@ -19,7 +19,6 @@ def main(name="greedy", seed=0):
     elif name == "dqn":
         agent = DQN(env)
         path = ""
-        # path = "/home/cjp/Desktop/MARL/DRLOFF/saved/off/dqn/1718440579.045611/0"
         if path != "":
             agent.load_models(path)
     
@@ -40,8 +39,7 @@ def main(name="greedy", seed=0):
 if __name__ == "__main__":
     start_time = time.time()
     # start_time = 0
-    # for name in ["local", "edge", "cloud", "random", "greedy", "dqn"]:
-    for name in ["dqn"]:
+    for name in ["local", "edge", "cloud", "random", "greedy", "dqn"]:
         episodes = 200
         dvr_rate_mean = 0
         ep_reward_mean = 0
