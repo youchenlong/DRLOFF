@@ -24,6 +24,7 @@
         - fixed trans time: $3$
 * `gnn.py`
     - [x] GCN
+    - [ ] GAT
 * `scheduler.py`
 
 ### MDP
@@ -36,3 +37,13 @@
     - M+1: cloud
 * reward
     - DVR (deadline violation ratio)
+
+### train and run
+* train DQN
+    ```python
+    python agent.py
+    ```
+* run all algs
+    ```python
+    python main.py
+    ```
