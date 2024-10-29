@@ -9,7 +9,7 @@ import time
 class Constant():
     c_max = 5e10 # CPU频率最大值
     r_max = 8e6 # 传输速率最大值
-    e_max = 5e10 # 存储容量最大值
+    s_max = 5e10 # 存储容量最大值
 
 
 def normalize(data):
@@ -22,10 +22,8 @@ class Environment():
     def __init__(self):
         self.num_nodes = 100
         self.num_edges = 250
-        # self.M = 3 # 基站数量
         self.M = 5 # 基站数量
         
-        # 下面这行代码用于初始化成员变量，不可删除
         self.reset()
         pass
 
@@ -50,54 +48,44 @@ class Environment():
 
     def generate_tolerance(self, V):
         # 均匀分布
-        # t_v = np.zeros(V)
+        # tolerance = np.zeros(V)
         # for i in range(V):
         #     if i == 0:
-        #         t_v[i] = np.random.uniform(1, 3)
+        #         tolerance[i] = np.random.uniform(1, 3)
         #     else:
-        #         t_v[i] = t_v[i-1] +  np.random.uniform(1, 3)
+        #         tolerance[i] = tolerance[i-1] +  np.random.uniform(1, 3)
 
-        # 正太分布（大于0）
+        # 正态分布
         lower, upper = 0, 4
         mu, sigma = 2, 1
         X = stats.truncnorm((lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
-        t_v = np.zeros(V)
+        tolerance = np.zeros(V)
         for i in range(V):
             if i == 0:
-                t_v[i] = X.rvs()
+                tolerance[i] = X.rvs()
             else:
-                t_v[i] = t_v[i-1] + X.rvs()
+                tolerance[i] = tolerance[i-1] + X.rvs()
 
-        return t_v
+        return tolerance
 
-    def generate_task(self, num_nodes, num_edges):
-        self.num_nodes = num_nodes
-        self.num_edges = num_edges
-        G, adjacency_matrix = self.generate_dag(self.num_nodes, self.num_edges)
+    def generate_task(self):
+        # 任务拓扑图
+        self.G, self.adjacency_matrix = self.generate_dag(self.num_nodes, self.num_edges)
+        
+        # 调度队列
+        self.queue = np.array(list(nx.topological_sort(self.G)))
+        
+        # 任务属性
+        self.data_size = np.random.uniform(8e5, 1.6e6, self.num_nodes)
+        self.cpu_cycles = np.random.uniform(2e8, 2e9, self.num_nodes)
+        self.tolerance = self.generate_tolerance(self.num_nodes)
 
-        self.G = G
-        self.adjacency_matrix = adjacency_matrix
-        self.sorted_nodes = list(nx.topological_sort(G))
-        V = len(self.sorted_nodes)
+        # 任务状态信息
         self.current_idx = 0
-
-        # 初始化任务的属性
-        tasks = list(G.nodes)
-        b_v = np.random.uniform(8e5, 1.6e6, V)  # 任务数据大小
-        d_v = np.random.uniform(2e8, 2e9, V)  # 任务所需的CPU周期数
-
-        # 重新排序任务
-        sorted_index = self.sorted_nodes  # 获取按任务编号排序后的索引    
-        # print(sorted_index)
-        self.sorted_tasks = np.array(tasks)[sorted_index]  # 排序后的任务
-        self.sorted_b_v = b_v[sorted_index]  # 按新任务顺序排列的任务数据大小
-        self.sorted_d_v = d_v[sorted_index]  # 按新任务顺序排列的CPU周期数
-        self.sorted_t_v = self.generate_tolerance(V) # 按新任务顺序排列的容忍延迟
-
-        self.T_com = np.zeros(V) # 按新任务顺序排列的任务完成时间 
-        self.completed = [False] * V # 任务是否完成
-        self.free = [False] * V # 任务是否释放资源
-        self.off_dev = [-1] * V # 任务执行设备
+        self.completed = [False] * self.num_nodes # 任务是否完成
+        self.T_com = np.zeros(self.num_nodes) # 任务完成时间 
+        self.free = [False] * self.num_nodes # 任务是否释放资源
+        self.off_dev = [-1] * self.num_nodes # 任务执行设备
         pass
 
 
@@ -105,32 +93,32 @@ class Environment():
         # TODO: 数据设计不合理
 
         # 本地
-        self.l_vm = np.random.uniform(1e8, 2e8)  # 本地处理任务的CPU频率
-        self.l_cap = np.random.uniform(1e8, 2e8) # 本地的存储容量
+        self.local_cpu_cycles = np.random.uniform(1e8, 2e8)  # 本地处理任务的CPU频率
+        self.local_storage = np.random.uniform(1e8, 2e8) # 本地的存储容量
         # 边缘
-        # self.e_vm = np.random.uniform(1e9, 2e9, self.M)  # 基站处理任务的CPU频率
-        # self.r_vm = np.random.uniform(2e6, 4e6, self.M)  # 基站与任务之间的传输速率
-        # self.e_cap = np.random.uniform(1e9, 2e9, self.M) # 基站的存储容量
-        self.e_vm = np.zeros(self.M) # 基站处理任务的CPU频率
-        self.r_vm = np.zeros(self.M) # 基站与任务之间的传输速率
-        self.e_cap = np.zeros(self.M) # 基站的存储容量
-        delta_e_vm = (2e9 - 1e9) / self.M
-        delta_r_vm = (4e6 - 2e6) / self.M
-        delta_e_cap = (2e9 - 1e9) / self.M
+        # self.edge_cpu_cycles = np.random.uniform(1e9, 2e9, self.M)  # 基站的CPU频率
+        # self.edge_trans_rate = np.random.uniform(2e6, 4e6, self.M)  # 基站的传输速率
+        # self.edge_storage = np.random.uniform(1e9, 2e9, self.M) # 基站的存储容量
+        self.edge_cpu_cycles = np.zeros(self.M) # 基站的CPU频率
+        self.edge_trans_rate = np.zeros(self.M) # 基站的传输速率
+        self.edge_storage = np.zeros(self.M) # 基站的存储容量
+        delta_edge_cpu_cycles = (2e9 - 1e9) / self.M
+        delta_edge_trans_rate = (4e6 - 2e6) / self.M
+        delta_edge_storage = (2e9 - 1e9) / self.M
         for i in range(self.M):
-            self.e_vm[i] = np.random.uniform(1e9 + i*delta_e_vm, 1e9 + (i+1)*delta_e_vm)
-            self.r_vm[i] = np.random.uniform(1e6 + i*delta_r_vm, 1e6 + (i+1)*delta_r_vm)
-            self.e_cap[i] = np.random.uniform(1e9 + i*delta_e_cap, 1e9 + (i+1)*delta_e_cap)
+            self.edge_cpu_cycles[i] = np.random.uniform(1e9 + i*delta_edge_cpu_cycles, 1e9 + (i+1)*delta_edge_cpu_cycles)
+            self.edge_trans_rate[i] = np.random.uniform(1e6 + i*delta_edge_trans_rate, 1e6 + (i+1)*delta_edge_trans_rate)
+            self.edge_storage[i] = np.random.uniform(1e9 + i*delta_edge_storage, 1e9 + (i+1)*delta_edge_storage)
         # 云
-        self.r_vc = np.random.uniform(2.4e6, 4.8e6)  # 云与任务之间的传输速率
-        self.t_rt = 3  # 固定传输时延
+        self.cloud_trans_rate = np.random.uniform(2.4e6, 4.8e6)  # 云的传输速率
+        self.cloud_fixed_time = 3  # 固定传输时延
         pass
 
     def reset(self, seed=0):
         random.seed(seed)
         np.random.seed(seed)
 
-        self.generate_task(self.num_nodes, self.num_edges)
+        self.generate_task()
         self.init_cluster()
         self.done = False
         
@@ -148,76 +136,53 @@ class Environment():
         # 本地
         if action == self.M:
             if task_idx == 0:
-                self.T_com[task_idx] = self.sorted_d_v[task_idx] / self.l_vm
+                self.T_com[task_idx] = self.cpu_cycles[task_idx] / self.local_cpu_cycles
             else:
-                # 前一个节点
+                # 调度队列中前一个节点
                 last_T = self.T_com[task_idx-1]
-                # 前继节点
-                # task_ID = self.sorted_nodes[task_idx]
-                # if list(self.G.predecessors(task_ID)) == []:
-                #     pred_T = 0
-                # else:
-                #     pred_T = 0
-                #     for ID in list(self.G.predecessors(task_ID)):
-                #         pred_T = max(pred_T, self.T_com[np.where(self.sorted_nodes == ID)])
+                # 图中前继节点
                 pred_T = max(self.T_com[:task_idx])
-                self.T_com[task_idx] = max(self.sorted_d_v[task_idx] / self.l_vm + pred_T, last_T)
-            self.l_cap = self.l_cap - self.sorted_b_v[task_idx]
+                self.T_com[task_idx] = max(self.cpu_cycles[task_idx] / self.local_cpu_cycles + pred_T, last_T)
+            self.local_storage = self.local_storage - self.data_size[task_idx]
             self.off_dev[task_idx] = 0
         # 云
         elif action == self.M + 1:
             if task_idx == 0:
-                self.T_com[task_idx] = self.sorted_b_v[task_idx] / self.r_vc + self.t_rt
+                self.T_com[task_idx] = self.data_size[task_idx] / self.cloud_trans_rate + self.cloud_fixed_time
             else:
-                # 前一个节点
+                # 调度队列中前一个节点
                 last_T = self.T_com[task_idx-1]
-                # 前继节点
-                # task_ID = self.sorted_nodes[task_idx]
-                # if list(self.G.predecessors(task_ID)) == []:
-                #     pred_T = 0
-                # else:
-                #     pred_T = 0
-                #     for ID in list(self.G.predecessors(task_ID)):
-                #         pred_T = max(pred_T, self.T_com[np.where(self.sorted_nodes == ID)])
+                # 图中前继节点
                 pred_T = max(self.T_com[:task_idx])
-                self.T_com[task_idx] = max(self.sorted_b_v[task_idx] / self.r_vc + self.t_rt + pred_T, last_T)
+                self.T_com[task_idx] = max(self.data_size[task_idx] / self.cloud_trans_rate + self.cloud_fixed_time + pred_T, last_T)
             self.off_dev[task_idx] = self.M + 1
         # 边缘
         else:
             edge_idx = action
             if task_idx == 0:
-                self.T_com[task_idx] = self.sorted_d_v[task_idx] / self.e_vm[edge_idx] + self.sorted_b_v[task_idx] / self.r_vm[edge_idx]
+                self.T_com[task_idx] = self.cpu_cycles[task_idx] / self.edge_cpu_cycles[edge_idx] + self.data_size[task_idx] / self.edge_trans_rate[edge_idx]
             else:
-                # 前一个节点
+                # 调度队列中前一个节点
                 last_T = self.T_com[task_idx-1]
-                # 前继节点
-                # task_ID = self.sorted_nodes[task_idx]
-                # if list(self.G.predecessors(task_ID)) == []:
-                #     pred_T = 0
-                # else:
-                #     pred_T = 0
-                #     for ID in list(self.G.predecessors(task_ID)):
-                #         pred_T = max(pred_T, self.T_com[np.where(self.sorted_nodes == ID)])
+                # 图中前继节点
                 pred_T = max(self.T_com[:task_idx])
-                self.T_com[task_idx] = max(self.sorted_d_v[task_idx] / self.e_vm[edge_idx] + self.sorted_b_v[task_idx] / self.r_vm[edge_idx] + pred_T, last_T)
-            self.e_cap[edge_idx] = self.e_cap[edge_idx] - self.sorted_b_v[task_idx]
+                self.T_com[task_idx] = max(self.cpu_cycles[task_idx] / self.edge_cpu_cycles[edge_idx] + self.data_size[task_idx] / self.edge_trans_rate[edge_idx] + pred_T, last_T)
+            self.edge_storage[edge_idx] = self.edge_storage[edge_idx] - self.data_size[task_idx]
             self.off_dev[task_idx] = edge_idx
         
         # 更新任务状态
         for idx in range(task_idx + 1):
             if self.T_com[idx] > 0:
                 self.completed[idx] = True
-        
-        # 释放资源
-        for idx in range(task_idx+1):
+        for idx in range(task_idx + 1):
             if self.completed[idx] and not self.free[idx]:
                 if self.off_dev[idx] == 0:
-                    self.l_cap = self.l_cap + self.sorted_b_v[idx]
+                    self.local_storage = self.local_storage + self.data_size[idx]
                 elif self.off_dev[idx] == self.M + 1:
                     pass
                 else:
                     edge_idx = self.off_dev[idx]
-                    self.e_cap[edge_idx] = self.e_cap[edge_idx] + self.sorted_b_v[idx]
+                    self.edge_storage[edge_idx] = self.edge_storage[edge_idx] + self.data_size[idx]
                 self.free[idx] = True
         
         self.current_idx = self.current_idx + 1
@@ -227,17 +192,15 @@ class Environment():
 
 
     def get_state(self):
-        if self.current_idx == len(self.G.nodes):
-            task_idx = np.zeros(len(self.G.nodes))
-        else:
-            task_idx = np.zeros(len(self.G.nodes))
+        task_idx = np.zeros(len(self.G.nodes))
+        if self.current_idx < len(self.G.nodes):
             task_idx[self.current_idx] = 1.0
-        task_info = np.stack([normalize(self.sorted_b_v), normalize(self.sorted_d_v), normalize(self.sorted_t_v)], axis=1)
+        task_info = np.stack([normalize(self.data_size), normalize(self.cpu_cycles), normalize(self.tolerance)], axis=1)
 
-        dev_c = np.append(np.append(self.l_vm, self.e_vm), Constant.c_max)
-        dev_r = np.append(np.append(Constant.r_max, self.r_vm), self.r_vc)
-        dev_cap = np.append(np.append(self.l_cap, self.e_cap), Constant.e_max)
-        dev_info = np.stack([normalize(dev_c), normalize(dev_r), normalize(dev_cap)], axis=1)
+        dev_cpu_cycles = np.append(np.append(self.local_cpu_cycles, self.edge_cpu_cycles), Constant.c_max)
+        dev_trans_rate = np.append(np.append(Constant.r_max, self.edge_trans_rate), self.cloud_trans_rate)
+        dev_storage = np.append(np.append(self.local_storage, self.edge_storage), Constant.s_max)
+        dev_info = np.stack([normalize(dev_cpu_cycles), normalize(dev_trans_rate), normalize(dev_storage)], axis=1)
         
         state = (task_idx, task_info, dev_info, self.adjacency_matrix)
         return state
@@ -245,8 +208,9 @@ class Environment():
     def get_reward(self):
         # TODO： reward设计不合理，没法用于强化学习训练
         # DVR
+        # 注意这里是self.current_idx - 1而不是self.current_idx
         task_idx = self.current_idx - 1
-        dvr = self.sorted_t_v[task_idx] - self.T_com[task_idx]
+        dvr = self.tolerance[task_idx] - self.T_com[task_idx]
         r1 = dvr
         return r1
 
@@ -289,29 +253,32 @@ class Environment():
     def get_avail_actions(self):
         avail_actions = np.ones(self.M + 2)
         task_idx = self.current_idx
-        if self.sorted_b_v[task_idx] > self.l_cap:
-            avail_actions[0] = 0
-        for edge_idx in range(1, self.M):
-            if self.sorted_b_v[task_idx] > self.e_cap[edge_idx]:
-                avail_actions[edge_idx] = 0
+        for action in range(self.M + 2):
+            if action == 0:
+                if self.data_size[task_idx] > self.local_storage:
+                    avail_actions[action] = 0
+            elif action >= 1 and action <= self.M:
+                edge_idx = action
+                if self.data_size[task_idx] > self.edge_storage[edge_idx]:
+                    avail_actions[action] = 0
+            else:
+                pass
         return avail_actions
 
     def log(self):
         # 任务
-        print("排序后的任务顺序:", self.sorted_tasks)
-        print("排序后的任务数据大小:", self.sorted_b_v)
-        print("排序后的CPU周期数:", self.sorted_d_v)
-        print("排序后的容忍时间:", self.sorted_t_v)
-        print("任务完成时间:", self.T_com)
+        print("调度顺序:", self.queue)
+        print("任务数据大小:", self.data_size)
+        print("任务CPU周期数:", self.cpu_cycles)
+        print("任务容忍时间:", self.tolerance)
         # 设备
-        print("基站与任务之间的传输速率:", self.r_vm)
-        print("基站处理任务的CPU频率:", self.e_vm)
-        print("基站的存储容量:", self.e_cap)
-        print("云与任务之间的传输速率:", self.r_vc)
-        print("固定传输时延:", self.t_rt)
-        # 本地
-        print("本地处理任务的CPU频率:", self.l_vm)
-        print("本地的存储容量:", self.l_cap)
+        print("本地的CPU频率:", self.local_cpu_cycles)
+        print("本地的存储容量:", self.local_storage)
+        print("基站的CPU频率:", self.edge_cpu_cycles)
+        print("基站的传输速率:", self.edge_trans_rate)
+        print("基站的存储容量:", self.edge_storage)
+        print("云的传输速率:", self.cloud_trans_rate)
+        print("固定传输时延:", self.cloud_fixed_time)    
 
     def plot_task(self):
         plt.figure(figsize=(8, 6))
@@ -325,7 +292,7 @@ class Environment():
         task_idx = self.current_idx
         dvr_count = 0
         for idx in range(task_idx):
-            if self.T_com[idx] > self.sorted_t_v[idx]:
+            if self.T_com[idx] > self.tolerance[idx]:
                 dvr_count = dvr_count + 1
         return dvr_count / len(self.G.nodes)
 
