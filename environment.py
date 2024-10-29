@@ -253,16 +253,11 @@ class Environment():
     def get_avail_actions(self):
         avail_actions = np.ones(self.M + 2)
         task_idx = self.current_idx
-        for action in range(self.M + 2):
-            if action == 0:
-                if self.data_size[task_idx] > self.local_storage:
-                    avail_actions[action] = 0
-            elif action >= 1 and action <= self.M:
-                edge_idx = action
-                if self.data_size[task_idx] > self.edge_storage[edge_idx]:
-                    avail_actions[action] = 0
-            else:
-                pass
+        if self.data_size[task_idx] > self.local_storage:
+            avail_actions[0] = 0
+        for edge_idx in range(1, self.M):
+            if self.data_size[task_idx] > self.edge_storage[edge_idx]:
+                avail_actions[edge_idx] = 0
         return avail_actions
 
     def log(self):

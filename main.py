@@ -18,6 +18,7 @@ def main(name="greedy", seed=0):
         agent = GreedyAgent()
     elif name == "dqn":
         agent = DQN(env)
+        # TODO: set your model path
         path = ""
         if path != "":
             agent.load_models(path)
