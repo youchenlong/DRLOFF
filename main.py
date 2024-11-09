@@ -17,7 +17,7 @@ def main(name="greedy", seed=0):
     elif name == "greedy":
         agent = GreedyAgent()
     elif name == "dqn":
-        agent = DQN(env)
+        agent = DQN(env, name="gcn")
         # TODO: set your model path
         path = ""
         if path != "":
@@ -32,14 +32,10 @@ def main(name="greedy", seed=0):
         state, reward, done = env.step(action)
 
         ep_reward = ep_reward + reward
-    # env.log()
-    # print(env.get_metric())
-    # env.plot_task()
     return env.get_metric(), ep_reward
 
 if __name__ == "__main__":
     start_time = time.time()
-    # start_time = 0
     for name in ["local", "edge", "cloud", "random", "greedy", "dqn"]:
         episodes = 200
         dvr_rate_mean = 0

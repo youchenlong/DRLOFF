@@ -20,8 +20,10 @@ def normalize(data):
 class Environment():
 
     def __init__(self):
-        self.num_nodes = 100
-        self.num_edges = 250
+        self.min_num_nodes = 80 # 最小节点数
+        self.max_num_nodes = 100 # 最大节点数
+        self.min_num_edges = 200 # 最小边数
+        self.max_num_edges = 250 # 最大边数
         self.M = 5 # 基站数量
         
         self.reset()
@@ -118,6 +120,12 @@ class Environment():
         random.seed(seed)
         np.random.seed(seed)
 
+        # self.num_nodes = random.randint(self.min_num_nodes, self.max_num_nodes)
+        # self.num_edges = random.randint(self.min_num_edges, self.max_num_edges)
+        # 简化训练复杂度：例如节点数可选值有5个，边可选值有5个
+        self.num_nodes = random.choice(range(self.min_num_nodes, self.max_num_nodes + 5, 5))
+        self.num_edges = random.choice(range(self.min_num_edges, self.max_num_edges + 10, 10))
+
         self.generate_task()
         self.init_cluster()
         self.done = False
@@ -192,17 +200,21 @@ class Environment():
 
 
     def get_state(self):
-        task_idx = np.zeros(len(self.G.nodes))
-        if self.current_idx < len(self.G.nodes):
+        task_idx = np.zeros(self.max_num_nodes)
+        if self.current_idx < self.num_nodes:
             task_idx[self.current_idx] = 1.0
-        task_info = np.stack([normalize(self.data_size), normalize(self.cpu_cycles), normalize(self.tolerance)], axis=1)
+        task_info_padding = np.stack([np.pad(normalize(self.data_size), (0, self.max_num_nodes - self.num_nodes)), \
+                                        np.pad(normalize(self.cpu_cycles), (0, self.max_num_nodes - self.num_nodes)), \
+                                        np.pad(normalize(self.tolerance), (0, self.max_num_nodes - self.num_nodes))], axis=1)
+        adjacency_matrix_padding = np.pad(self.adjacency_matrix, \
+                                        ((0, self.max_num_nodes - self.num_nodes), (0, self.max_num_nodes - self.num_nodes)))
 
         dev_cpu_cycles = np.append(np.append(self.local_cpu_cycles, self.edge_cpu_cycles), Constant.c_max)
         dev_trans_rate = np.append(np.append(Constant.r_max, self.edge_trans_rate), self.cloud_trans_rate)
         dev_storage = np.append(np.append(self.local_storage, self.edge_storage), Constant.s_max)
         dev_info = np.stack([normalize(dev_cpu_cycles), normalize(dev_trans_rate), normalize(dev_storage)], axis=1)
         
-        state = (task_idx, task_info, dev_info, self.adjacency_matrix)
+        state = (task_idx, task_info_padding, dev_info, adjacency_matrix_padding)
         return state
 
     def get_reward(self):
@@ -218,7 +230,7 @@ class Environment():
         """
         task_idx + task_info + dev_info + graph
         """
-        return len(self.G.nodes) + len(self.G.nodes) * 3 + (self.M + 2) * 3 + len(self.G.nodes) * len(self.G.nodes)
+        return self.max_num_nodes + self.max_num_nodes * 3 + (self.M + 2) * 3 + self.max_num_nodes * self.max_num_nodes
 
     def get_action_size(self):
         """
@@ -236,18 +248,18 @@ class Environment():
         return np.hstack((task_idx.reshape(batch_size, -1), task_info.reshape((batch_size, -1)), dev_info.reshape((batch_size, -1)), graph.reshape((batch_size, -1))))
 
     def decode_batch_state(self, batch_state):
-        num_nodes = len(self.G.nodes)
+        max_num_nodes = self.max_num_nodes
         M = self.M
         
-        task_idx_dim = num_nodes
-        task_info_dim = num_nodes * 3
+        task_idx_dim = max_num_nodes
+        task_info_dim = max_num_nodes * 3
         dev_info_dim = (M + 2) * 3
-        graph_dim = num_nodes * num_nodes
+        graph_dim = max_num_nodes * max_num_nodes
 
-        task_idx = np.array([item.reshape(num_nodes, 1) for item in batch_state[:, :task_idx_dim]])
-        task_info = np.array([item.reshape(num_nodes, 3) for item in batch_state[:, task_idx_dim:task_idx_dim+task_info_dim]])
+        task_idx = np.array([item.reshape(max_num_nodes, 1) for item in batch_state[:, :task_idx_dim]])
+        task_info = np.array([item.reshape(max_num_nodes, 3) for item in batch_state[:, task_idx_dim:task_idx_dim+task_info_dim]])
         dev_info = np.array([item.reshape((M+2), 3) for item in batch_state[:, task_idx_dim+task_info_dim:task_idx_dim+task_info_dim+dev_info_dim]])
-        graph = np.array([item.reshape(num_nodes, num_nodes) for item in batch_state[:, -graph_dim:]])
+        graph = np.array([item.reshape(max_num_nodes, max_num_nodes) for item in batch_state[:, -graph_dim:]])
         return (task_idx, task_info, dev_info, graph)
 
     def get_avail_actions(self):
@@ -296,6 +308,7 @@ def main():
     env = Environment()
     env.reset()
     env.log()
+    env.plot_task()
 
 if __name__ == "__main__":
     main()

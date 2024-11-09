@@ -94,8 +94,8 @@ class DQN():
             self.net = MLPPolicy(self.n_state, self.n_action)
             self.target_net = MLPPolicy(self.n_state, self.n_action)
         elif name == "gcn":
-            self.net = GCNPolicy(3, self.n_action, len(self.env.G.nodes), self.env.M)
-            self.target_net = GCNPolicy(3, self.n_action, len(self.env.G.nodes), self.env.M)
+            self.net = GCNPolicy(3, self.n_action, self.env.max_num_nodes, self.env.M)
+            self.target_net = GCNPolicy(3, self.n_action, self.env.max_num_nodes, self.env.M)
         else:
             raise Exception("error!")
 
@@ -201,9 +201,8 @@ def train():
     start_time = time.time()
     # start_time = 0
     env = Environment()
-    agent = DQN(env, name="mlp")
-    # episodes = 20000
-    episodes = 5000
+    agent = DQN(env, name="gcn")
+    episodes = 50000
     dvr_list = []
     reward_list = []
     t = 0
