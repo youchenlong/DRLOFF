@@ -1,4 +1,5 @@
 import numpy as np
+from collections import deque
 from environment import Environment
 
 class ReplayBuffer():
@@ -9,39 +10,38 @@ class ReplayBuffer():
         self.n_state = env.get_state_size()
         self.n_action = env.get_action_size()
 
-        self.state = np.zeros((buffer_size, self.n_state))
-        self.action = np.zeros((buffer_size, 1))
-        self.reward = np.zeros((buffer_size, 1))
-        self.next_state = np.zeros((buffer_size, self.n_state))
-        self.avail_action = np.zeros((buffer_size, self.n_action))
-
-        self.next_idx = 0
-        self.num_in_buffer = 0
-        pass
+        self.state = deque(maxlen=buffer_size)
+        self.action = deque(maxlen=buffer_size)
+        self.reward = deque(maxlen=buffer_size)
+        self.next_state = deque(maxlen=buffer_size)
+        self.avail_action = deque(maxlen=buffer_size)
+        self.IDs = deque(maxlen=buffer_size)
 
     def can_sample(self):
-        return self.batch_size < self.num_in_buffer
-        # return self.num_in_buffer >= self.buffer_size
+        return self.batch_size <= len(self.state)
 
     def sample(self):
         if self.can_sample():
-            sample_index = np.random.choice(self.num_in_buffer, self.batch_size)
-            batch_state = self.state[sample_index]
-            batch_action = self.action[sample_index]
-            batch_reward = self.reward[sample_index]
-            batch_next_state = self.next_state[sample_index]
-            batch_avail_action = self.avail_action[sample_index]
+            indices = np.random.choice(len(self.state), self.batch_size, replace=False)
+            batch_state = [self.state[i] for i in indices]
+            batch_action = [self.action[i] for i in indices]
+            batch_reward = [self.reward[i] for i in indices]
+            batch_next_state = [self.next_state[i] for i in indices]
+            batch_avail_action = [self.avail_action[i] for i in indices]
+            batch_IDs = [self.IDs[i] for i in indices]
 
-            return self.env.decode_batch_state(batch_state), batch_action, batch_reward, self.env.decode_batch_state(batch_next_state), batch_avail_action
+            return self.env.decode_batch_state(np.array(batch_state)), \
+                    np.array(batch_action), \
+                    np.array(batch_reward), \
+                    self.env.decode_batch_state(np.array(batch_next_state)), \
+                    np.array(batch_avail_action), \
+                    np.array(batch_IDs)
         return None
 
     def store(self, state, action, reward, next_state, avail_action):
-
-        self.state[self.next_idx] = self.env.encode_state(state)
-        self.action[self.next_idx] = action
-        self.reward[self.next_idx] = reward
-        self.next_state[self.next_idx] = self.env.encode_state(next_state)
-        self.avail_action[self.next_idx] = avail_action
-
-        self.next_idx = (self.next_idx + 1) % self.buffer_size
-        self.num_in_buffer = self.num_in_buffer + 1 if self.num_in_buffer < self.buffer_size else self.buffer_size
+        self.state.append(self.env.encode_state(state))
+        self.action.append(action)
+        self.reward.append(reward)
+        self.next_state.append(self.env.encode_state(next_state))
+        self.avail_action.append(avail_action)
+        self.IDs.append(self.env.ID)

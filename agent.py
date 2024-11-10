@@ -15,7 +15,7 @@ class MLPPolicy(nn.Module):
         super(MLPPolicy, self).__init__()
         self.name = "mlp"
 
-        self.hid_size = 64
+        self.hid_size = 128
         self.fc1 = nn.Linear(n_state, self.hid_size)
         self.fc2 = nn.Linear(self.hid_size, n_action)
 
@@ -34,8 +34,8 @@ class GCNPolicy(nn.Module):
         super(GCNPolicy, self).__init__()
         self.name = "gcn"
 
-        self.gcn_out_dim = 4 # hid_size与输入特征的维度相差不能太大
-        self.hid_size = 64
+        self.gcn_out_dim = 3
+        self.hid_size = 128
         self.gcn = GCNLayer(n_feature, self.gcn_out_dim)
         self.fc1 = nn.Linear(num_nodes + num_nodes * self.gcn_out_dim + (M + 2) * 3, self.hid_size)
         self.fc2 = nn.Linear(self.hid_size, n_action)
@@ -79,6 +79,7 @@ class DQN():
         self.n_action = self.env.get_action_size()
 
         # TODO: hyper-parameters should be fine-tuned
+        self.buffer_size = 100000 # 1000 episodes * 100 nodes
         self.batch_size = 128
         self.lr = 0.01
         self.gamma = 0.99
@@ -86,7 +87,6 @@ class DQN():
         self.epsilon_finish = 0.99
         self.epsilon_time_length = 10000 # 100 episodes * 100 nodes
         self.epsilon_schedule = LinearSchedule(self.epsilon_start, self.epsilon_finish, self.epsilon_time_length)
-        self.buffer_size = 100000 # 1000 episodes * 100 nodes
         self.target_update_interval = 200 # target update interval
         self.grad_norm_clip = 10 # avoid gradient explode
 
@@ -114,24 +114,22 @@ class DQN():
             state = torch.unsqueeze(torch.FloatTensor(state), 0)
             action_value = self.net.forward(state)
         elif self.net.name == "gcn":
-            task_idx, task_info, dev_info, graph = state
+            task_idx, task_info, dev_info = state
+            adj = self.env.adjs[self.env.ID]
             task_idx = torch.unsqueeze(torch.FloatTensor(task_idx), 0)
             task_info = torch.unsqueeze(torch.FloatTensor(task_info), 0)
             dev_info = torch.unsqueeze(torch.FloatTensor(dev_info), 0)
-            graph = torch.unsqueeze(torch.FloatTensor(graph), 0)
-            action_value = self.net.forward(task_idx, task_info, dev_info, graph)
+            adj = torch.unsqueeze(torch.FloatTensor(adj), 0) 
+            action_value = self.net.forward(task_idx, task_info, dev_info, adj)
         else:
             raise Exception("error!")
             
         action_value = action_value.squeeze()
-        # print(action_value.shape)
-        # print(avail_action.shape)
         action_value[avail_action == 0] = 0
-        if np.random.randn() <= epsilon:# greedy policy
+        if np.random.randn() <= epsilon:  # greedy policy
             action = torch.max(action_value, dim=0)[1].data.numpy()
-        else: # random policy
+        else:  # random policy
             action = np.random.choice(self.n_action, p=avail_action/sum(avail_action))
-            action = action
         return action
 
 
@@ -143,28 +141,31 @@ class DQN():
         self.learn_step_counter+=1
 
         # sample from replay buffer
-        batch_state, batch_action, batch_reward, batch_next_state, batch_avail_action = self.buffer.sample()
+        batch_state, batch_action, batch_reward, batch_next_state, batch_avail_action, batch_IDs = self.buffer.sample()
         if self.net.name == "mlp":
             batch_state = torch.FloatTensor(self.env.encode_batch_state(batch_state)) 
             batch_next_state = torch.FloatTensor(self.env.encode_batch_state(batch_next_state))
             batch_action = torch.LongTensor(batch_action.astype(int))
             batch_reward = torch.FloatTensor(batch_reward)
             batch_avail_action = torch.FloatTensor(batch_avail_action)
-            q = torch.gather(self.net(batch_state), dim=1, index=batch_action)
+            q = torch.gather(self.net(batch_state), dim=1, index=batch_action.unsqueeze(1))
             q_next = self.target_net(batch_next_state).detach()
+            q_next[batch_avail_action == 0] = 0
+            q_target = batch_reward.view(self.batch_size, 1) + self.gamma * q_next.max(1)[0].view(self.batch_size, 1)
         elif self.net.name == "gcn":
-            idx, x, y, adj = batch_state
-            target_idx, target_x, target_y, target_adj = batch_next_state
+            idx, x, y = batch_state
+            target_idx, target_x, target_y = batch_next_state
+            adj = np.array([self.env.adjs[ID] for ID in batch_IDs])
             batch_action = torch.LongTensor(batch_action.astype(int))
             batch_reward = torch.FloatTensor(batch_reward)
             batch_avail_action = torch.FloatTensor(batch_avail_action)
-            q = torch.gather(self.net(torch.FloatTensor(idx), torch.FloatTensor(x), torch.FloatTensor(y), torch.FloatTensor(adj)), dim=1, index=batch_action)
-            q_next = self.target_net(torch.FloatTensor(target_idx), torch.FloatTensor(target_x), torch.FloatTensor(target_y), torch.FloatTensor(target_adj)).detach()
+            q = torch.gather(self.net(torch.FloatTensor(idx), torch.FloatTensor(x), torch.FloatTensor(y), torch.FloatTensor(adj)), dim=1, index=batch_action.unsqueeze(1))
+            q_next = self.target_net(torch.FloatTensor(target_idx), torch.FloatTensor(target_x), torch.FloatTensor(target_y), torch.FloatTensor(adj)).detach()
+            q_next[batch_avail_action == 0] = 0
+            q_target = batch_reward.view(self.batch_size, 1) + self.gamma * q_next.max(1)[0].view(self.batch_size, 1)
         else:
             raise Exception("error!")
 
-        q_next[batch_avail_action == 0] = 0
-        q_target = batch_reward + self.gamma * q_next.max(1)[0].view(self.batch_size, 1)
         loss = F.mse_loss(q, q_target)
 
         # update parameters
@@ -199,7 +200,6 @@ def save(dirname, filename, data):
 
 def train():
     start_time = time.time()
-    # start_time = 0
     env = Environment()
     agent = DQN(env, name="gcn")
     episodes = 50000
@@ -219,10 +219,9 @@ def train():
             ep_reward += reward
 
             if agent.buffer.can_sample():
-                agent.learn()
-                if done:
-                    print("episode: {} , the episode reward is {}".format(i, round(ep_reward, 3)))
+                agent.learn()                    
             if done:
+                print("episode: {} , the episode reward is {}".format(i, round(ep_reward, 3)))
                 break
             state = next_state
             t = t + 1
@@ -231,9 +230,12 @@ def train():
         reward_list.append(ep_reward)
 
         if i % 1000 == 0:
+            env.update_adjs(set(agent.buffer.IDs))
+
+        if i % 1000 == 0:
             agent.save_models("./saved/off/dqn/{}/{}".format(start_time, i))
-    save("./saved/off/dqn/{}".format(start_time), "dvr.txt", dvr_list)
-    save("./saved/off/dqn/{}".format(start_time), "ep_reward.txt", reward_list)
+            save("./saved/off/dqn/{}".format(start_time), "dvr.txt", dvr_list)
+            save("./saved/off/dqn/{}".format(start_time), "ep_reward.txt", reward_list)
         
 
 if __name__ == '__main__':
