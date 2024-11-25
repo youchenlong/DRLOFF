@@ -1,14 +1,6 @@
-### Management
-* `agent.py`
-    - [x] DQN
-* `baselines.py`
-    - [x] all local
-    - [x] all edge
-    - [x] all cloud
-    - [x] random
-    - [x] greedy
-* `buffer.py`
-* `environment.py`
+### Description
+Deep Reinforcement Learning-based Dependent Task Offloading with Theory of Mind
+* environment
     * Task
         - data size: $[8\times10^5, 1.6\times10^6]$
         - cpu cycles: $[2\times10^8, 2\times10^9]$
@@ -22,14 +14,16 @@
     * Cloud
         - trans: $[2.4\times10^6, 4.8\times10^6]$
         - fixed trans time: $3$
-* `gnn.py`
-    - [x] GCN
-    - [ ] GAT
-* `scheduler.py`
+* agents
+    - [x] theory of mind + dqn
+    - [x] gcn + dqn
+    - [x] all local, all edge, all cloud, random, greedy
+* buffer
+    - [x] episode buffer
 
 ### MDP
 * state
-    - state space: [task_idx, task_info, dev_info, adj]
+    - state space: [task_idx, task_info, dev_info]
 * action
     - action space: M + 1 + 1
     - 0~M-1: edge
@@ -39,11 +33,11 @@
     - DVR (deadline violation ratio)
 
 ### train and run
-* train DQN
+* train
     ```python
-    python agent.py
+    python train_tom_agent.py
     ```
-* run all algs
+* evaluate
     ```python
     python main.py
     ```
