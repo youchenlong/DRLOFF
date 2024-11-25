@@ -4,10 +4,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import random
 import time
-from scipy.sparse import csr_matrix
 
-
-class Constant():
+class Constant:
     c_max = 5e10 # CPU频率最大值
     r_max = 8e6 # 传输速率最大值
     s_max = 5e10 # 存储容量最大值
@@ -18,7 +16,7 @@ def normalize(data):
     return (data - np.min(data)) / (np.max(data) - np.min(data))
 
 
-class Environment():
+class Environment:
 
     def __init__(self):
         self.ID = 0 # 环境唯一标识

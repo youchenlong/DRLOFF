@@ -1,46 +1,46 @@
 import numpy as np
 
-class LocalAgent():
+class LocalAgent:
     def __init__(self):
         pass
     
-    def choose_action(self, state, avail_action):
+    def choose_action(self, state, avail_action, evaluate=False):
         action = len(avail_action) - 2 
         return action
 
-class EdgeAgent():
+class EdgeAgent:
     def __init__(self):
         pass
     
-    def choose_action(self, state, avail_action):
+    def choose_action(self, state, avail_action, evaluate=False):
         M = len(avail_action) - 2
         avail_action = avail_action[:M]
         action = np.random.choice(len(avail_action), p=avail_action/sum(avail_action))
         return action
 
-class CloudAgent():
+class CloudAgent:
     def __init__(self):
         pass
     
-    def choose_action(self, state, avail_action):
+    def choose_action(self, state, avail_action, evaluate=False):
         action = len(avail_action) - 1
         return action
 
-class RandomAgent():
+class RandomAgent:
     def __init__(self):
         pass
     
-    def choose_action(self, state, avail_action):
+    def choose_action(self, state, avail_action, evaluate=False):
         action = np.random.choice(len(avail_action), p=avail_action/sum(avail_action))
         return action
 
-class GreedyAgent():
+class GreedyAgent:
     def __init__(self):
         pass
     
-    def choose_action(self, state, avail_action):
+    def choose_action(self, state, avail_action, evaluate=False):
         M = len(avail_action) - 2
-        task_idx, task_info, dev_info, graph = state
+        task_idx, task_info, dev_info = state
         w_comp = 0.8
         w_trans = 0.2
         v_comp = dev_info[:M, 0] / sum(dev_info[:M, 0])

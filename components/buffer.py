@@ -1,8 +1,9 @@
 import numpy as np
 from collections import deque
-from environment import Environment
 
-class ReplayBuffer():
+from env.environment import Environment
+
+class ReplayBuffer:
     def __init__(self, buffer_size, batch_size, env):
         self.buffer_size = buffer_size
         self.batch_size = batch_size
