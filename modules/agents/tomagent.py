@@ -58,7 +58,7 @@ class ToMAgent:
         inputs = torch.cat([torch.FloatTensor(self.env.encode_state(state)).unsqueeze(0), self.e_character, self.e_mental], dim=-1)
         action_value = self.net.forward(inputs)
         action_value = action_value.squeeze()
-        action_value[avail_action == 0] = 0
+        action_value[avail_action == 0] = -9999999
         if np.random.randn() <= epsilon:  # greedy policy
             action = torch.max(action_value, dim=0)[1].item()
         else:  # random policy
@@ -113,7 +113,7 @@ class ToMAgent:
         next_inputs = torch.cat([next_states, e_characters, e_mentals], dim=1)
         q = torch.gather(self.net(inputs), dim=1, index=actions.unsqueeze(1))
         q_next = self.target_net(next_inputs).detach()
-        q_next[avail_actions == 0] = 0
+        q_next[avail_actions == 0] = -9999999
         q_target = (rewards + self.gamma * q_next.max(1)[0]).unsqueeze(1)       
         loss = F.mse_loss(q, q_target)
 

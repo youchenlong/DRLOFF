@@ -50,7 +50,7 @@ class GCNAgent:
         action_value = self.net.forward(task_idx, task_info, dev_info, adj)
             
         action_value = action_value.squeeze()
-        action_value[avail_action == 0] = 0
+        action_value[avail_action == 0] = -9999999
         if np.random.randn() <= epsilon:  # greedy policy
             action = torch.max(action_value, dim=0)[1].data.numpy()
         else:  # random policy
@@ -75,7 +75,7 @@ class GCNAgent:
         batch_avail_action = torch.FloatTensor(batch_avail_action)
         q = torch.gather(self.net(torch.FloatTensor(idx), torch.FloatTensor(x), torch.FloatTensor(y), torch.FloatTensor(adj)), dim=1, index=batch_action.unsqueeze(1))
         q_next = self.target_net(torch.FloatTensor(target_idx), torch.FloatTensor(target_x), torch.FloatTensor(target_y), torch.FloatTensor(adj)).detach()
-        q_next[batch_avail_action == 0] = 0
+        q_next[batch_avail_action == 0] = -9999999
         q_target = batch_reward.view(self.batch_size, 1) + self.gamma * q_next.max(1)[0].view(self.batch_size, 1)
 
         loss = F.mse_loss(q, q_target)

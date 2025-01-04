@@ -45,11 +45,13 @@ class MLPAgent:
         inputs = torch.FloatTensor(self.env.encode_state(state)).unsqueeze(0)
         action_value = self.net.forward(inputs)
         action_value = action_value.squeeze()
-        action_value[avail_action == 0] = 0
+        action_value[avail_action == 0] = -9999999
         if np.random.randn() <= epsilon:  # greedy policy
             action = torch.max(action_value, dim=0)[1].item()
         else:  # random policy
             action = int(np.random.choice(self.n_action, p=avail_action/sum(avail_action)))
+        if evaluate:
+            print(action_value, action)
         return action
 
 
@@ -72,7 +74,7 @@ class MLPAgent:
         # calculate loss
         q = torch.gather(self.net(batch_state), dim=1, index=batch_action.unsqueeze(1))
         q_next = self.target_net(batch_next_state).detach()
-        q_next[batch_avail_action == 0] = 0
+        q_next[batch_avail_action == 0] = -9999999
         q_target = batch_reward.view(self.batch_size, 1) + self.gamma * q_next.max(1)[0].view(self.batch_size, 1)
         loss = F.mse_loss(q, q_target)
 
