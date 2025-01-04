@@ -52,7 +52,7 @@ class Environment:
         mu, sigma = 4, 1
         X = stats.truncnorm((lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
         # plot
-        plt.hist(X.rvs(1000), bins=100, density=True)
+        # plt.hist(X.rvs(1000), bins=100, density=True)
         tolerance = np.zeros(len(queue))
         for task_idx in queue:
             tolerance[task_idx] = X.rvs()
