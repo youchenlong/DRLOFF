@@ -22,12 +22,12 @@ class ToMAgent:
 
         # TODO: hyper-parameters should be fine-tuned
         self.buffer_size = 5000 # 5000 episodes
-        self.batch_size = 16
-        self.lr = 0.01
+        self.batch_size = 32
+        self.lr = 0.0005
         self.gamma = 0.99
         self.epsilon_start = 0.0
         self.epsilon_finish = 0.99
-        self.epsilon_time_length = 50000 # 100 episodes * 100 nodes
+        self.epsilon_time_length = 50000 # 500 episodes * 100 nodes
         self.epsilon_schedule = LinearSchedule(self.epsilon_start, self.epsilon_finish, self.epsilon_time_length)
         self.target_update_interval = 50 # update target network every 50 episodes
         self.grad_norm_clip = 10 # avoid gradient explode
@@ -38,7 +38,7 @@ class ToMAgent:
         self.learn_step_counter = 0
         self.buffer = ReplayBuffer(self.buffer_size, self.batch_size)
         self.params = list(self.net.parameters()) + list(self.observer.cnet.parameters()) + list(self.observer.mnet.parameters())
-        self.optimizer = torch.optim.Adam(self.params, lr=self.lr)
+        self.optimizer = torch.optim.RMSprop(params=self.params, lr=self.lr)
 
         self.e_character = None
         self.e_mental = None

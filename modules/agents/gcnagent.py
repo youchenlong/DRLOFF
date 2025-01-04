@@ -18,14 +18,14 @@ class GCNAgent:
 
         # TODO: hyper-parameters should be fine-tuned
         self.buffer_size = 500000 # 5000 episodes * 100 nodes
-        self.batch_size = 128
-        self.lr = 0.01
+        self.batch_size = 256
+        self.lr = 0.0005
         self.gamma = 0.99
         self.epsilon_start = 0.0
         self.epsilon_finish = 0.99
         self.epsilon_time_length = 50000 # 500 episodes * 100 nodes
         self.epsilon_schedule = LinearSchedule(self.epsilon_start, self.epsilon_finish, self.epsilon_time_length)
-        self.target_update_interval = 5000 # update target network every 50 episodes
+        self.target_update_interval = 500 # update target network every 5 episodes
         self.grad_norm_clip = 10 # avoid gradient explode
 
         self.net = GCNPolicy(3, self.n_action, self.env.max_num_nodes, self.env.M)
@@ -33,7 +33,7 @@ class GCNAgent:
 
         self.learn_step_counter = 0
         self.buffer = ReplayBuffer(self.buffer_size, self.batch_size, self.env)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
+        self.optimizer = torch.optim.RMSprop(params=self.params, lr=self.lr)
 
 
     def choose_action(self, state, avail_action, t=0, evaluate=False):

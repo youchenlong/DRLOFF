@@ -17,6 +17,7 @@ Deep Reinforcement Learning-based Dependent Task Offloading with Theory of Mind
 * agents
     - [x] theory of mind + dqn
     - [x] gcn + dqn
+    - [x] dqn
     - [x] all local, all edge, all cloud, random, greedy
 * buffer
     - [x] episode buffer
