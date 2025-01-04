@@ -1,5 +1,6 @@
 import time
 from env.environment import Environment
+from modules.agents.mlpagent import MLPAgent
 from modules.agents.gcnagent import GCNAgent
 from modules.agents.tomagent import ToMAgent
 from modules.agents.baselines import LocalAgent, EdgeAgent, CloudAgent, RandomAgent, GreedyAgent
@@ -17,9 +18,14 @@ def main(name="greedy", seed=0):
         agent = RandomAgent()
     elif name == "greedy":
         agent = GreedyAgent()
+    elif name == "mlp":
+        agent = MLPAgent(env)
+        # TODO: set your model path
+        path = ""
+        if path != "":
+            agent.load_models(path)
     elif name == "gcn":
         agent = GCNAgent(env)
-        # TODO: set your model path
         path = ""
         if path != "":
             agent.load_models(path)
@@ -43,8 +49,8 @@ def main(name="greedy", seed=0):
 
 if __name__ == "__main__":
     start_time = time.time()
-    for name in ["local", "edge", "cloud", "random", "greedy", "gcn", "tom"]:
-        episodes = 200
+    for name in ["local", "edge", "cloud", "random", "greedy", "mlp", "gcn", "tom"]:
+        episodes = 100
         dvr_rate_mean = 0
         ep_reward_mean = 0
         for i in range(episodes):

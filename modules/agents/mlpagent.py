@@ -6,12 +6,12 @@ import os
 import time
 
 from utils.scheduler import LinearSchedule
-from utils.policy import GCNPolicy
+from utils.policy import MLPPolicy
 from components.buffer import ReplayBuffer
 
-class GCNAgent:
+class MLPAgent:
     def __init__(self, env):
-        super(GCNAgent, self).__init__()
+        super(MLPAgent, self).__init__()
         self.env = env
         self.n_state = self.env.get_state_size()
         self.n_action = self.env.get_action_size()
@@ -28,12 +28,13 @@ class GCNAgent:
         self.target_update_interval = 5000 # update target network every 50 episodes
         self.grad_norm_clip = 10 # avoid gradient explode
 
-        self.net = GCNPolicy(3, self.n_action, self.env.max_num_nodes, self.env.M)
-        self.target_net = GCNPolicy(3, self.n_action, self.env.max_num_nodes, self.env.M)
+        self.net = MLPPolicy(self.n_state, self.n_action)
+        self.target_net = MLPPolicy(self.n_state, self.n_action)
 
         self.learn_step_counter = 0
         self.buffer = ReplayBuffer(self.buffer_size, self.batch_size, self.env)
-        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
+        self.params = list(self.net.parameters())
+        self.optimizer = torch.optim.Adam(self.params, lr=self.lr)
 
 
     def choose_action(self, state, avail_action, t=0, evaluate=False):
@@ -41,20 +42,14 @@ class GCNAgent:
             epsilon = 1.0
         else:
             epsilon = self.epsilon_schedule.eval(t)
-        task_idx, task_info, dev_info = state
-        adj = self.env.adjs[self.env.ID]
-        task_idx = torch.unsqueeze(torch.FloatTensor(task_idx), 0)
-        task_info = torch.unsqueeze(torch.FloatTensor(task_info), 0)
-        dev_info = torch.unsqueeze(torch.FloatTensor(dev_info), 0)
-        adj = torch.unsqueeze(torch.FloatTensor(adj), 0) 
-        action_value = self.net.forward(task_idx, task_info, dev_info, adj)
-            
+        inputs = torch.FloatTensor(self.env.encode_state(state)).unsqueeze(0)
+        action_value = self.net.forward(inputs)
         action_value = action_value.squeeze()
         action_value[avail_action == 0] = 0
         if np.random.randn() <= epsilon:  # greedy policy
-            action = torch.max(action_value, dim=0)[1].data.numpy()
+            action = torch.max(action_value, dim=0)[1].item()
         else:  # random policy
-            action = np.random.choice(self.n_action, p=avail_action/sum(avail_action))
+            action = int(np.random.choice(self.n_action, p=avail_action/sum(avail_action)))
         return action
 
 
@@ -67,17 +62,18 @@ class GCNAgent:
 
         # sample from replay buffer
         batch_state, batch_action, batch_reward, batch_next_state, batch_avail_action, batch_IDs = self.buffer.sample()
-        idx, x, y = batch_state
-        target_idx, target_x, target_y = batch_next_state
-        adj = np.array([self.env.adjs[ID] for ID in batch_IDs])
+
+        batch_state = torch.FloatTensor(self.env.encode_batch_state(batch_state)) 
+        batch_next_state = torch.FloatTensor(self.env.encode_batch_state(batch_next_state))
         batch_action = torch.LongTensor(batch_action.astype(int))
         batch_reward = torch.FloatTensor(batch_reward)
         batch_avail_action = torch.FloatTensor(batch_avail_action)
-        q = torch.gather(self.net(torch.FloatTensor(idx), torch.FloatTensor(x), torch.FloatTensor(y), torch.FloatTensor(adj)), dim=1, index=batch_action.unsqueeze(1))
-        q_next = self.target_net(torch.FloatTensor(target_idx), torch.FloatTensor(target_x), torch.FloatTensor(target_y), torch.FloatTensor(adj)).detach()
+       
+        # calculate loss
+        q = torch.gather(self.net(batch_state), dim=1, index=batch_action.unsqueeze(1))
+        q_next = self.target_net(batch_next_state).detach()
         q_next[batch_avail_action == 0] = 0
         q_target = batch_reward.view(self.batch_size, 1) + self.gamma * q_next.max(1)[0].view(self.batch_size, 1)
-
         loss = F.mse_loss(q, q_target)
 
         # update parameters
@@ -92,7 +88,7 @@ class GCNAgent:
     def store_transition(self, state, action, reward, next_state, avail_action):
         self.buffer.store(state, action, reward, next_state, avail_action)
 
-    
+
     def save_models(self, path):
         if not os.path.exists(path):
             os.makedirs(path)

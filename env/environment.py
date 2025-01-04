@@ -22,10 +22,14 @@ class Environment:
         self.ID = 0 # 环境唯一标识
         self.adjs = {} # 所有任务的邻接矩阵
 
-        self.min_num_nodes = 80 # 最小节点数
-        self.max_num_nodes = 100 # 最大节点数
-        self.min_num_edges = 200 # 最小边数
-        self.max_num_edges = 250 # 最大边数
+        # self.min_num_nodes = 80 # 最小节点数
+        # self.max_num_nodes = 100 # 最大节点数
+        # self.min_num_edges = 200 # 最小边数
+        # self.max_num_edges = 250 # 最大边数
+        self.min_num_nodes = 100
+        self.max_num_nodes = 100
+        self.min_num_edges = 250
+        self.max_num_edges = 250
         self.M = 5 # 基站数量
         pass
 
@@ -42,19 +46,22 @@ class Environment:
         
         return G
 
-    def generate_tolerance(self, V):
+    def generate_tolerance(self, G, queue):
         # 正态分布
-        lower, upper = 0, 4
-        mu, sigma = 2, 1
+        lower, upper = 1, 6
+        mu, sigma = 4, 1
         X = stats.truncnorm((lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
-        tolerance = np.zeros(V)
-        for i in range(V):
-            if i == 0:
-                tolerance[i] = X.rvs()
-            else:
-                tolerance[i] = tolerance[i-1] + X.rvs()
+        # plot
+        plt.hist(X.rvs(1000), bins=100, density=True)
+        tolerance = np.zeros(len(queue))
+        for task_idx in queue:
+            tolerance[task_idx] = X.rvs()
+            dependencies = list(G.predecessors(task_idx))
+            if len(dependencies) > 0:
+                tolerance[task_idx] = tolerance[task_idx] + max([tolerance[dep] for dep in dependencies])
+        sorted_tolerance = np.array([tolerance[task_idx] for task_idx in queue])
+        return sorted_tolerance
 
-        return tolerance
 
     def generate_task(self):
         # 任务拓扑图
@@ -68,7 +75,7 @@ class Environment:
         # 任务属性
         self.data_size = np.random.uniform(8e5, 1.6e6, self.num_nodes)
         self.cpu_cycles = np.random.uniform(2e8, 2e9, self.num_nodes)
-        self.tolerance = self.generate_tolerance(self.num_nodes)
+        self.tolerance = self.generate_tolerance(self.G, self.queue)
 
         # 任务状态信息
         self.current_idx = 0
@@ -200,8 +207,7 @@ class Environment:
         # DVR
         # 注意这里是self.current_idx - 1而不是self.current_idx
         task_idx = self.current_idx - 1
-        dvr = self.tolerance[task_idx] - self.T_com[task_idx]
-        r1 = dvr
+        r1 = (self.tolerance[task_idx] - self.T_com[task_idx]) / sum(self.tolerance)
         return r1
 
     def get_state_size(self):
