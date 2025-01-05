@@ -33,6 +33,7 @@ class GCNAgent:
 
         self.learn_step_counter = 0
         self.buffer = ReplayBuffer(self.buffer_size, self.batch_size, self.env)
+        self.params = list(self.net.parameters())
         self.optimizer = torch.optim.RMSprop(params=self.params, lr=self.lr)
 
 

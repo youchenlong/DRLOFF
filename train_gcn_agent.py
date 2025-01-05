@@ -16,7 +16,8 @@ def train():
     start_time = time.time()
     env = Environment()
     agent = GCNAgent(env)
-    episodes = 50000
+    # episodes = 50000
+    episodes = 5000
     dvr_list = []
     reward_list = []
     t = 0

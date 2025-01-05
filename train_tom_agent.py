@@ -16,7 +16,8 @@ def main():
     start_time = time.time()
     env = Environment()
     agent = ToMAgent(env)
-    episodes = 50000
+    # episodes = 50001
+    episodes = 5001
     dvr_list = []
     reward_list = []
     t = 0
