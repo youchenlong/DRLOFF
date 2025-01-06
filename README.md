@@ -16,7 +16,7 @@ Deep Reinforcement Learning-based Dependent Task Offloading with Theory of Mind
         - fixed trans time: $3$
 * agents
     - [x] theory of mind + dqn
-    - [x] gcn + dqn
+    - [x] gat + dqn
     - [x] dqn
     - [x] all local, all edge, all cloud, random, greedy
 * buffer

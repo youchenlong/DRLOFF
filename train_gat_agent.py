@@ -4,7 +4,7 @@ import os
 
 from env.environment import Environment
 from components.episodebuffer import Episode, ReplayBuffer
-from modules.agents.gcnagent import GCNAgent
+from modules.agents.gatagent import GATAgent
 
 def save(dirname, filename, data):
     if not os.path.exists(dirname):
@@ -15,7 +15,7 @@ def save(dirname, filename, data):
 def train():
     start_time = time.time()
     env = Environment()
-    agent = GCNAgent(env)
+    agent = GATAgent(env)
     # episodes = 50001
     episodes = 5001
     dvr_list = []
@@ -48,9 +48,9 @@ def train():
             env.update_adjs(set(agent.buffer.IDs))
 
         if i % 500 == 0:
-            agent.save_models("./saved/off/gcn/{}/{}".format(start_time, i))
-            save("./saved/off/gcn/{}".format(start_time), "dvr.txt", dvr_list)
-            save("./saved/off/gcn/{}".format(start_time), "ep_reward.txt", reward_list)
+            agent.save_models("./saved/off/gat/{}/{}".format(start_time, i))
+            save("./saved/off/gat/{}".format(start_time), "dvr.txt", dvr_list)
+            save("./saved/off/gat/{}".format(start_time), "ep_reward.txt", reward_list)
         
 
 if __name__ == '__main__':

@@ -23,7 +23,7 @@ def plot(data):
     plt.show()
 
 if __name__ == '__main__':
-    file_path = os.path.join('saved', 'off', 'mlp', '1736003236.9120817', 'ep_reward.txt')
+    file_path = os.path.join('saved', 'off', 'gat', '1736146194.1024332', 'ep_reward.txt')
     data = load_data(file_path)
     plot(data)
     

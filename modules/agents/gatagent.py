@@ -6,12 +6,12 @@ import os
 import time
 
 from utils.scheduler import LinearSchedule
-from utils.policy import GCNPolicy
+from utils.policy import GATPolicy
 from components.buffer import ReplayBuffer
 
-class GCNAgent:
+class GATAgent:
     def __init__(self, env):
-        super(GCNAgent, self).__init__()
+        super(GATAgent, self).__init__()
         self.env = env
         self.n_state = self.env.get_state_size()
         self.n_action = self.env.get_action_size()
@@ -28,8 +28,8 @@ class GCNAgent:
         self.target_update_interval = 2000 # update target network every 20 episodes
         self.grad_norm_clip = 10 # avoid gradient explode
 
-        self.net = GCNPolicy(3, self.n_action, self.env.max_num_nodes, self.env.M)
-        self.target_net = GCNPolicy(3, self.n_action, self.env.max_num_nodes, self.env.M)
+        self.net = GATPolicy(3, self.n_action, self.env.max_num_nodes, self.env.M)
+        self.target_net = GATPolicy(3, self.n_action, self.env.max_num_nodes, self.env.M)
 
         self.learn_step_counter = 0
         self.buffer = ReplayBuffer(self.buffer_size, self.batch_size, self.env)

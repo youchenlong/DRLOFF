@@ -17,15 +17,15 @@ class MLPAgent:
         self.n_action = self.env.get_action_size()
 
         # TODO: hyper-parameters should be fine-tuned
-        self.buffer_size = 500000 # 5000 episodes * 100 nodes
+        self.buffer_size = 50000 # 500 episodes * 100 nodes
         self.batch_size = 256
         self.lr = 0.0005
         self.gamma = 0.99
         self.epsilon_start = 0.0
         self.epsilon_finish = 0.99
-        self.epsilon_time_length = 50000 # 500 episodes * 100 nodes
+        self.epsilon_time_length = 5000 # 50 episodes * 100 nodes
         self.epsilon_schedule = LinearSchedule(self.epsilon_start, self.epsilon_finish, self.epsilon_time_length)
-        self.target_update_interval = 500 # update target network every 5 episodes
+        self.target_update_interval = 2000 # update target network every 20 episodes
         self.grad_norm_clip = 10 # avoid gradient explode
 
         self.net = MLPPolicy(self.n_state, self.n_action)

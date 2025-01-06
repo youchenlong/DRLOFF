@@ -275,7 +275,7 @@ class Environment:
         print("基站的传输速率:", self.edge_trans_rate)
         print("基站的存储容量:", self.edge_storage)
         print("云的传输速率:", self.cloud_trans_rate)
-        print("固定传输时延:", self.cloud_fixed_time)    
+        print("固定传输时延:", self.cloud_fixed_time)   
 
     def plot_task(self):
         plt.figure(figsize=(8, 6))

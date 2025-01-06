@@ -64,10 +64,10 @@ def main():
         dvr_list.append(dvr_rate)
         reward_list.append(ep_reward)
 
-        if i % 1000 == 0:
+        if i % 500 == 0:
             env.update_adjs(set(agent.buffer.get_IDs()))
 
-        if i % 1000 == 0:
+        if i % 500 == 0:
             agent.save_models("./saved/off/tom/{}/{}".format(start_time, i))
             save("./saved/off/tom/{}".format(start_time), "dvr.txt", dvr_list)
             save("./saved/off/tom/{}".format(start_time), "ep_reward.txt", reward_list)
